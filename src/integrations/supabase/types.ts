@@ -55,6 +55,7 @@ export type Database = {
           cost_price: number
           created_at: string
           id: string
+          image_url: string | null
           low_stock_threshold: number
           name: string
           sale_price: number
@@ -68,6 +69,7 @@ export type Database = {
           cost_price?: number
           created_at?: string
           id?: string
+          image_url?: string | null
           low_stock_threshold?: number
           name: string
           sale_price?: number
@@ -81,6 +83,7 @@ export type Database = {
           cost_price?: number
           created_at?: string
           id?: string
+          image_url?: string | null
           low_stock_threshold?: number
           name?: string
           sale_price?: number
