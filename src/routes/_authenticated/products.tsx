@@ -1,24 +1,32 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
-import { useI18n } from "@/lib/i18n";
+import { useI18n, type TKey } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, Search, AlertTriangle } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Plus, Pencil, Trash2, Search, AlertTriangle, ChevronsUpDown, Check, Upload, X, ImageIcon } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/products")({ component: ProductsPage });
 
 type Product = {
   id: string; name: string; category: string | null;
   cost_price: number; sale_price: number; stock: number;
-  unit: string; low_stock_threshold: number;
+  unit: string; low_stock_threshold: number; image_url: string | null;
 };
+
+const DEMO_CATEGORY_KEYS: TKey[] = [
+  "catGrocery", "catRice", "catOilSpice", "catSnacks", "catBeverage",
+  "catDairy", "catToiletries", "catBakery", "catOthers",
+];
 
 function ProductsPage() {
   const { user } = useAuth();
@@ -53,9 +61,9 @@ function ProductsPage() {
         <h1 className="text-2xl font-bold md:text-3xl">{t("products")}</h1>
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setEditing(null); }}>
           <DialogTrigger asChild><Button><Plus className="mr-1 h-4 w-4" />{t("addProduct")}</Button></DialogTrigger>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle>{editing ? t("edit") : t("addProduct")}</DialogTitle></DialogHeader>
-            <ProductForm editing={editing} onDone={() => { setOpen(false); setEditing(null); qc.invalidateQueries({ queryKey: ["products"] }); }} />
+            <ProductForm editing={editing} products={products} onDone={() => { setOpen(false); setEditing(null); qc.invalidateQueries({ queryKey: ["products"] }); }} />
           </DialogContent>
         </Dialog>
       </div>
@@ -76,6 +84,13 @@ function ProductsPage() {
               const low = Number(p.stock) <= Number(p.low_stock_threshold);
               return (
                 <div key={p.id} className="flex items-center justify-between gap-3 p-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
+                    {p.image_url ? (
+                      <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />
+                    ) : (
+                      <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                    )}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{p.name}</span>
@@ -83,7 +98,7 @@ function ProductsPage() {
                     </div>
                     <div className="mt-0.5 text-xs text-muted-foreground">
                       {p.category && <span>{p.category} · </span>}
-                      {t("stock")}: {fmt(Number(p.stock))} {t(p.unit as any) ?? p.unit} · ৳{fmt(Number(p.sale_price))}
+                      {t("stock")}: {fmt(Number(p.stock))} {(t as (k: string) => string)(p.unit) ?? p.unit} · ৳{fmt(Number(p.sale_price))}
                     </div>
                   </div>
                   <div className="flex gap-1">
@@ -100,7 +115,108 @@ function ProductsPage() {
   );
 }
 
-function ProductForm({ editing, onDone }: { editing: Product | null; onDone: () => void }) {
+function CategoryCombobox({ value, onChange, products }: { value: string; onChange: (v: string) => void; products: Product[] }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const options = useMemo(() => {
+    const demo = DEMO_CATEGORY_KEYS.map((k) => t(k));
+    const used = Array.from(new Set(products.map((p) => p.category).filter((c): c is string => !!c && c.trim() !== "")));
+    return Array.from(new Set([...demo, ...used])).sort((a, b) => a.localeCompare(b));
+  }, [products, t]);
+
+  const trimmed = query.trim();
+  const exists = trimmed && options.some((o) => o.toLowerCase() === trimmed.toLowerCase());
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" role="combobox" className="w-full justify-between font-normal">
+          <span className={cn(!value && "text-muted-foreground")}>{value || t("selectCategory")}</span>
+          <ChevronsUpDown className="h-4 w-4 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <Command shouldFilter={true}>
+          <CommandInput placeholder={t("searchCategory")} value={query} onValueChange={setQuery} />
+          <CommandList>
+            <CommandEmpty>—</CommandEmpty>
+            <CommandGroup>
+              {options.map((opt) => (
+                <CommandItem key={opt} value={opt} onSelect={() => { onChange(opt); setOpen(false); setQuery(""); }}>
+                  <Check className={cn("mr-2 h-4 w-4", value === opt ? "opacity-100" : "opacity-0")} />
+                  {opt}
+                </CommandItem>
+              ))}
+              {trimmed && !exists && (
+                <CommandItem value={`__create__${trimmed}`} onSelect={() => { onChange(trimmed); setOpen(false); setQuery(""); }}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  {t("createCategory")}: <span className="ml-1 font-medium">{trimmed}</span>
+                </CommandItem>
+              )}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function ImageField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { user } = useAuth();
+  const { t } = useI18n();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleFile = async (file: File) => {
+    if (!user) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error("Max 5MB"); return; }
+    setUploading(true);
+    const ext = file.name.split(".").pop() || "jpg";
+    const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error } = await supabase.storage.from("product-images").upload(path, file, { upsert: false, contentType: file.type });
+    if (error) { toast.error(error.message); setUploading(false); return; }
+    const { data } = supabase.storage.from("product-images").getPublicUrl(path);
+    onChange(data.publicUrl);
+    setUploading(false);
+  };
+
+  return (
+    <div>
+      <Label>{t("image")}</Label>
+      <div className="mt-1 flex items-center gap-3">
+        <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
+          {value ? (
+            <img src={value} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <ImageIcon className="h-6 w-6 text-muted-foreground" />
+          )}
+        </div>
+        <div className="flex flex-col gap-2">
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}
+          />
+          <Button type="button" size="sm" variant="outline" disabled={uploading} onClick={() => inputRef.current?.click()}>
+            <Upload className="mr-1 h-4 w-4" />
+            {uploading ? t("uploading") : t("uploadImage")}
+          </Button>
+          {value && (
+            <Button type="button" size="sm" variant="ghost" onClick={() => onChange("")}>
+              <X className="mr-1 h-4 w-4" />{t("removeImage")}
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProductForm({ editing, products, onDone }: { editing: Product | null; products: Product[]; onDone: () => void }) {
   const { user } = useAuth();
   const { t } = useI18n();
   const [form, setForm] = useState({
@@ -111,6 +227,7 @@ function ProductForm({ editing, onDone }: { editing: Product | null; onDone: () 
     stock: editing ? String(editing.stock) : "0",
     unit: editing?.unit ?? "piece",
     low_stock_threshold: editing ? String(editing.low_stock_threshold) : "5",
+    image_url: editing?.image_url ?? "",
   });
   const [busy, setBusy] = useState(false);
 
@@ -126,6 +243,7 @@ function ProductForm({ editing, onDone }: { editing: Product | null; onDone: () 
       stock: Number(form.stock) || 0,
       unit: form.unit,
       low_stock_threshold: Number(form.low_stock_threshold) || 0,
+      image_url: form.image_url.trim() || null,
     };
     const { error } = editing
       ? await supabase.from("products").update(payload).eq("id", editing.id)
@@ -139,7 +257,11 @@ function ProductForm({ editing, onDone }: { editing: Product | null; onDone: () 
   return (
     <form onSubmit={submit} className="space-y-3">
       <div><Label>{t("productName")}</Label><Input required value={form.name} onChange={(e) => set("name", e.target.value)} /></div>
-      <div><Label>{t("category")}</Label><Input value={form.category} onChange={(e) => set("category", e.target.value)} /></div>
+      <div>
+        <Label>{t("category")}</Label>
+        <CategoryCombobox value={form.category} onChange={(v) => set("category", v)} products={products} />
+      </div>
+      <ImageField value={form.image_url} onChange={(v) => set("image_url", v)} />
       <div className="grid grid-cols-2 gap-3">
         <div><Label>{t("costPrice")}</Label><Input type="number" step="0.01" value={form.cost_price} onChange={(e) => set("cost_price", e.target.value)} /></div>
         <div><Label>{t("salePrice")}</Label><Input type="number" step="0.01" required value={form.sale_price} onChange={(e) => set("sale_price", e.target.value)} /></div>
