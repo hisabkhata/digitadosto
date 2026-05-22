@@ -177,6 +177,17 @@ const dict = {
     stockShort: "Not enough stock",
     addFirstProduct: "Add a product first",
     enterAmount: "Enter amount",
+    cost: "Cost",
+    purchases: "Purchases",
+    margin: "Margin",
+    dateRange: "Date range",
+    from: "From",
+    to: "To",
+    custom: "Custom",
+    dailyTrend: "Daily trend",
+    revenueVsCost: "Revenue vs cost",
+    avgSale: "Avg sale",
+    pickDate: "Pick a date",
   },
 } as const;
 
