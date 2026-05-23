@@ -1,34 +1,40 @@
-## সমস্যা কী
+## What I verified
+- The Vercel URL returns a platform-level `404: NOT_FOUND` before the app loads.
+- The published app URL loads correctly and serves the site/login screen.
+- The codebase routes are present and valid (`/`, `/login`, `/_authenticated/...`).
+- The project is configured for a Cloudflare-style TanStack Start server build:
+  - `package.json` includes `@cloudflare/vite-plugin`
+  - `vite.config.ts` sets `tanstackStart.server.entry = "server"`
+  - `wrangler.jsonc` points to `src/server.ts`
 
-আপনার সাইট `digitadosto.vercel.app`-এ সব page-এ 404 আসছে।
+## Conclusion
+This does not look like a broken page route or missing app code.
+It looks like a Vercel deployment-target mismatch: the repo is currently set up to run on a Cloudflare-worker-style server output, while the Vercel deployment is not serving that runtime correctly, so Vercel returns its own 404 page.
 
-কারণ: এই project-টি **TanStack Start + Cloudflare Workers** এর জন্য configured (`wrangler.jsonc`, `@cloudflare/vite-plugin`, `src/server.ts` worker entry)। Vercel এই output format বুঝতে পারে না — তাই Vercel build deploy হলেও কোনো route serve হয় না, সব URL-এ 404।
+## Plan
+1. Audit the repo for any hosting-specific assumptions and confirm which parts are tied to the current server runtime.
+2. Prepare a Vercel-compatible deployment path instead of changing business features or UI.
+3. Add only the minimum hosting changes needed for Vercel support (no live app feature changes).
+4. Re-check the app entry, SSR handling, and route bootstrapping so the root URL works on Vercel.
+5. Give you exact redeploy settings/instructions for Vercel after the code-side compatibility work is ready.
 
-আপনার Lovable project এর নিজস্ব published URL `https://digitadosto.lovable.app` কিন্তু ঠিকঠাক কাজ করছে — কারণ Lovable Cloudflare Workers এ host করে।
+## Technical details
+Two realistic paths exist:
 
-## সমাধান (recommended)
+### Path A — Recommended
+Keep the current architecture and use the existing published hosting for live deployment.
+- Lowest risk
+- No app rewrite
+- Already proven working
 
-**Lovable Publish ব্যবহার করুন, Vercel না।** এটাই এই stack এর জন্য designed।
+### Path B — If you must use Vercel
+Port the app from the current Cloudflare-targeted server output to a Vercel-supported deployment shape.
+That likely means:
+- removing/replacing Cloudflare-specific deployment assumptions
+- updating server entry/runtime expectations
+- validating TanStack Start SSR behavior under the new host
+- then redeploying on Vercel with the correct project settings
 
-পদক্ষেপ:
-1. Lovable editor এ **Publish** button ক্লিক করুন (উপরে ডানে)
-2. **Update** ক্লিক করে latest version live করুন → `https://digitadosto.lovable.app` এ সব page কাজ করবে
-3. Custom domain চাইলে: **Project Settings → Domains** থেকে নিজের domain connect করুন (যেমন `digitadosto.com`)
-4. Vercel deployment বন্ধ করে দিন — duplicate hosting দরকার নেই
-
-## কেন Vercel-এ port করা ভালো option না
-
-Vercel এ চালাতে হলে নিচের জিনিসগুলো করতে হবে — প্রতিটাই app ভাঙার risk:
-- `vite.config.ts` থেকে Cloudflare plugin সরিয়ে Vercel adapter বসানো
-- `src/server.ts` (Cloudflare Worker entry) ফেলে দেওয়া
-- `wrangler.jsonc` ফেলে দেওয়া
-- SSR error wrapper আবার নতুন করে লেখা
-- Vercel-এ আলাদা করে environment variables (Supabase keys) সব set করা
-
-এতে কোনো নতুন feature পাবেন না — যা Lovable Publish এ already আছে। সাইটের জন্য একটাই public URL দরকার।
-
-## আমি কী করবো এই plan approve করলে
-
-কোনো code change নেই। শুধু confirm করবো — তারপর আপনি Lovable editor এ **Publish → Update** ক্লিক করবেন এবং `digitadosto.lovable.app` থেকে সাইট access করবেন। চাইলে custom domain wire করার step-by-step দেখিয়ে দেবো।
-
-আপনি যদি জোর দিয়ে Vercel-এ port করতে চান, বলুন — তখন আলাদা migration plan বানাবো।
+## Expected outcome after implementation
+- Either a Vercel-compatible repo ready for redeploy,
+- or a final proof that the current repo should not be redeployed to Vercel without migration, along with exact next steps for you.
